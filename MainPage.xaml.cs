@@ -40,6 +40,11 @@ namespace VisualiseTasks
             DrawGraph(data);
         }
 
+        /// <summary>
+        /// Writes the data out to a CSV File
+        /// </summary>
+        /// <param name="data"></param>
+        /// <returns></returns>
         private async Task SaveData(List<DataReading> data)
         {
             var savePicker = new Windows.Storage.Pickers.FileSavePicker
@@ -74,6 +79,10 @@ namespace VisualiseTasks
             await Windows.Storage.FileIO.WriteTextAsync(file, csvDoc);
         }
 
+        /// <summary>
+        /// Loads the data in from a csv file
+        /// </summary>
+        /// <returns></returns>
         private async Task<List<DataReading>> GetDataFromAFile()
         {
             DateTime ParseDate(string value, int lineNumber)
@@ -90,6 +99,16 @@ namespace VisualiseTasks
                     return result;
 
                 throw new Exception($"The date on line {lineNumber} must be numeric, not {value}");
+            }
+
+            async Task<Windows.Storage.StorageFile> AskForFile()
+            {
+                var openPicker = new Windows.Storage.Pickers.FileOpenPicker
+                {
+                    SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary
+                };
+                openPicker.FileTypeFilter.Add(".csv");
+                return await openPicker.PickSingleFileAsync();
             }
 
 
@@ -132,6 +151,10 @@ namespace VisualiseTasks
             return data;
         }
 
+        /// <summary>
+        /// Generates some sample data
+        /// </summary>
+        /// <returns></returns>
         private List<DataReading> GetTestData()
         {
             var results = new List<DataReading>();
@@ -179,22 +202,7 @@ namespace VisualiseTasks
             return results;
         }
 
-        private async Task<Windows.Storage.StorageFile> AskForFile()
-        {
-            var openPicker = new Windows.Storage.Pickers.FileOpenPicker
-            {
-                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary
-            };
-            openPicker.FileTypeFilter.Add(".csv");
-            var file = await openPicker.PickSingleFileAsync();
 
-            if (file != null)
-            {
-                Windows.Storage.AccessCache.StorageApplicationPermissions.FutureAccessList.Add(file);
-            }
-
-            return file;
-        }
 
         private void DrawGraph(List<DataReading> data)
         {
