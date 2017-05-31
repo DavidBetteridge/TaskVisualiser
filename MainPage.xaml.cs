@@ -2,11 +2,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Shapes;
-
+using Windows.UI.Xaml.Navigation;
+using Windows.UI.Xaml;
+using Windows.Storage;
+using System.Text;
+using Windows.Storage.Streams;
 
 namespace VisualiseTasks
 {
@@ -15,14 +20,119 @@ namespace VisualiseTasks
     /// </summary>
     public sealed partial class MainPage : Page
     {
+        /// <summary>
+        /// The data format used in the CSV file
+        /// </summary>
+        private const string DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
         public MainPage()
         {
             this.InitializeComponent();
-            var data = GetData();
+
+        }
+
+        protected override async void OnNavigatedTo(NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+
+            var data = await GetDataFromAFile();
+            //var data = GetTestData();
+            //await SaveData(data);
             DrawGraph(data);
         }
 
-        private List<DataReading> GetData()
+        private async Task SaveData(List<DataReading> data)
+        {
+            var savePicker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Desktop
+            };
+            savePicker.FileTypeChoices.Add("CSV File ", new List<string>() { ".csv" });
+            savePicker.SuggestedFileName = "Data";
+            var file = await savePicker.PickSaveFileAsync();
+            if (file == null) Application.Current.Exit();
+
+            var resultsCSV = new Chilkat.Csv();
+            resultsCSV.HasColumnNames = true;
+            resultsCSV.SetColumnName(0, "Start");
+            resultsCSV.SetColumnName(1, "End");
+            resultsCSV.SetColumnName(2, "Buyer");
+            resultsCSV.SetColumnName(3, "Table");
+            resultsCSV.SetColumnName(4, "Rows");
+
+            var rowNumber = 0;
+            foreach (var dataPoint in data)
+            {
+                resultsCSV.SetCell(rowNumber, 0, dataPoint.StartTime.ToString(DATE_FORMAT));
+                resultsCSV.SetCell(rowNumber, 1, dataPoint.EndTime.ToString(DATE_FORMAT));
+                resultsCSV.SetCell(rowNumber, 2, dataPoint.BuyerName);
+                resultsCSV.SetCell(rowNumber, 3, dataPoint.TableName);
+                resultsCSV.SetCell(rowNumber, 4, dataPoint.NumberOfRows.ToString());
+                rowNumber++;
+            }
+
+            var csvDoc = resultsCSV.SaveToString();
+            await Windows.Storage.FileIO.WriteTextAsync(file, csvDoc);
+        }
+
+        private async Task<List<DataReading>> GetDataFromAFile()
+        {
+            DateTime ParseDate(string value, int lineNumber)
+            {
+                if (DateTime.TryParseExact(value, DATE_FORMAT, null, System.Globalization.DateTimeStyles.None, out var result))
+                    return result;
+
+                throw new Exception($"The date on line {lineNumber} must be in the format {DATE_FORMAT},  not {value}");
+            }
+
+            int ParseNumber(string value, int lineNumber)
+            {
+                if (int.TryParse(value, out var result))
+                    return result;
+
+                throw new Exception($"The date on line {lineNumber} must be numeric, not {value}");
+            }
+
+
+            var file = await AskForFile();
+            if (file == null) Application.Current.Exit();
+
+            // Can't use this due to some strange encoding issue
+            // var contents = await Windows.Storage.FileIO.ReadTextAsync(file);
+            var buffer = await FileIO.ReadBufferAsync(file);
+            var reader = DataReader.FromBuffer(buffer);
+            var fileContent = new byte[reader.UnconsumedBufferLength];
+            reader.ReadBytes(fileContent);
+            var contents = Encoding.UTF8.GetString(fileContent, 0, fileContent.Length);
+
+            var csv = new Chilkat.Csv
+            {
+                //  Prior to loading the CSV file, indicate that the 1st row should be treated as column names:
+                HasColumnNames = true
+            };
+
+            var success = csv.LoadFromString(contents);
+            if (success != true)
+            {
+                throw new Exception("Failed to read the index csv file " + csv.LastErrorText);
+            }
+
+            var data = new List<DataReading>(csv.NumRows);
+            for (var rowNumber = 0; rowNumber <= csv.NumRows - 1; rowNumber++)
+            {
+                data.Add(new DataReading()
+                {
+                    StartTime = ParseDate(csv.GetCell(rowNumber, 0), rowNumber),
+                    EndTime = ParseDate(csv.GetCell(rowNumber, 1), rowNumber),
+                    BuyerName = csv.GetCell(rowNumber, 2),
+                    TableName = csv.GetCell(rowNumber, 3),
+                    NumberOfRows = ParseNumber(csv.GetCell(rowNumber, 4), rowNumber),
+                });
+            }
+
+            return data;
+        }
+
+        private List<DataReading> GetTestData()
         {
             var results = new List<DataReading>();
             var rnd = new Random();
@@ -49,6 +159,10 @@ namespace VisualiseTasks
                     }
 
                     var endTime = earliestSlot.endTime.AddSeconds(rnd.Next(0, 120));
+
+                    if (buyer==2 && table == 10)
+                        endTime = earliestSlot.endTime.AddSeconds(60*10);
+
                     results.Add(new DataReading()
                     {
                         BuyerName = $"Buyer{buyer}",
@@ -63,6 +177,23 @@ namespace VisualiseTasks
             }
 
             return results;
+        }
+
+        private async Task<Windows.Storage.StorageFile> AskForFile()
+        {
+            var openPicker = new Windows.Storage.Pickers.FileOpenPicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary
+            };
+            openPicker.FileTypeFilter.Add(".csv");
+            var file = await openPicker.PickSingleFileAsync();
+
+            if (file != null)
+            {
+                Windows.Storage.AccessCache.StorageApplicationPermissions.FutureAccessList.Add(file);
+            }
+
+            return file;
         }
 
         private void DrawGraph(List<DataReading> data)

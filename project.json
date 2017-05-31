@@ -1,5 +1,6 @@
 ﻿{
   "dependencies": {
+    "Chilkat.uwp": "9.5.0.68",
     "Microsoft.NETCore.UniversalWindowsPlatform": "5.2.3",
     "Microsoft.Toolkit.Uwp": "1.4.1",
     "System.ValueTuple": "4.4.0-preview1-25305-02"
